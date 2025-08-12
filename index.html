@@ -662,22 +662,46 @@
     <script>
       // Global variables
       let memories = {};
-      const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5MB
-      const MAX_VIDEO_SIZE = 15 * 1024 * 1024; // 15MB
-      const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB (reduced for mobile)
-      const MAX_ITEMS_PER_CATEGORY = 900;
+      const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
+      const MAX_VIDEO_SIZE = 15 * 1024 * 1024;
+      const MAX_TOTAL_SIZE = 500 * 1024 * 1024;
+      const MAX_ITEMS_PER_CATEGORY = 100;
 
-      // Helper function to convert file to Base64
-      function fileToBase64(file) {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = (error) => reject(error);
-          reader.readAsDataURL(file);
-        });
+      // Improved storage management functions
+      function calculateCurrentStorageUsage() {
+        return Object.values(memories)
+          .flat()
+          .reduce((sum, m) => sum + (m.size || 0), 0);
       }
 
-      // Improved upload function with Base64 conversion
+      function clearOldestMemoriesIfNeeded(newFileSize) {
+        const currentUsage = calculateCurrentStorageUsage();
+        if (currentUsage + newFileSize <= MAX_TOTAL_SIZE) return false;
+
+        // Sort all memories by date (oldest first)
+        const allMemories = Object.entries(memories).flatMap(
+          ([category, items]) =>
+            items
+              .map((item) => ({ ...item, category }))
+              .sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0))
+        );
+
+        let clearedSize = 0;
+        const targetSize = currentUsage + newFileSize - MAX_TOTAL_SIZE;
+
+        for (const memory of allMemories) {
+          if (clearedSize >= targetSize) break;
+
+          memories[memory.category] = memories[memory.category].filter(
+            (m) => m.id !== memory.id
+          );
+          clearedSize += memory.size || 0;
+        }
+
+        return clearedSize > 0;
+      }
+
+      // Improved upload function
       async function uploadMemory() {
         const category = document.getElementById("memoryCategory").value;
         const year = document.getElementById("memoryYear").value;
@@ -751,40 +775,14 @@
           // Process files sequentially to avoid memory issues
           for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            const isVideo = file.type.startsWith("video/");
-
-            // Convert file to Base64
-            const fileData = await fileToBase64(file);
-
-            const memoryItem = {
-              id: Date.now() + "-" + Math.random().toString(36).substr(2, 9),
-              type: isVideo ? "video" : "image",
-              src: fileData, // Store as Base64 string
-              year: year,
-              category: category,
-              name: file.name,
-              size: file.size,
-              lastModified: file.lastModified || Date.now(),
-            };
-
-            // Initialize category if not exists
-            if (!memories[category]) {
-              memories[category] = [];
-            }
-
-            // Check if category has too many items
-            if (memories[category].length >= MAX_ITEMS_PER_CATEGORY) {
-              // Remove oldest item in this category
-              memories[category].shift();
-            }
-
-            // Add to memories
-            memories[category].push(memoryItem);
+            await processSingleFile(file, category, year);
 
             // Save after each file to prevent data loss
-            saveMemories();
+            if (!saveMemories()) {
+              throw new Error("Gagal menyimpan ke penyimpanan lokal");
+            }
 
-            // Update UI
+            // Update UI after each file
             renderMemorySection(category);
             renderUploadedMemories();
           }
@@ -799,30 +797,74 @@
         }
       }
 
+      // Process single file with Promise
+      function processSingleFile(file, category, year) {
+        return new Promise((resolve, reject) => {
+          const isVideo = file.type.startsWith("video/");
+
+          // Check if category exists, if not create it
+          if (!memories[category]) {
+            memories[category] = [];
+          }
+
+          const memoryItem = {
+            id: Date.now() + "-" + Math.random().toString(36).substr(2, 9),
+            type: isVideo ? "video" : "image",
+            year: year,
+            category: category,
+            name: file.name,
+            size: file.size,
+            lastModified: file.lastModified || Date.now(),
+            file: isVideo ? file : null, // Store the file object for videos
+          };
+
+          if (isVideo) {
+            // For videos, we'll use the file object directly when needed
+            memoryItem.src = URL.createObjectURL(file);
+            memories[category].push(memoryItem);
+            resolve();
+          } else {
+            // For images, convert to data URL
+            const reader = new FileReader();
+            reader.onload = function (e) {
+              memoryItem.src = e.target.result;
+              memories[category].push(memoryItem);
+              resolve();
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          }
+        });
+      }
+
       // Improved save function with size check
       function saveMemories() {
         try {
-          const data = JSON.stringify(memories);
+          const memoriesToSave = {};
 
-          // Check if data is too large
-          if (new Blob([data]).size > MAX_TOTAL_SIZE) {
-            alert("Data terlalu besar! Hapus beberapa kenangan lama.");
-            return false;
-          }
+          Object.keys(memories).forEach((category) => {
+            memoriesToSave[category] = memories[category].map((memory) => {
+              if (
+                memory.type === "video" &&
+                memory.src &&
+                !memory.src.startsWith("data:")
+              ) {
+                return {
+                  ...memory,
+                  src: "",
+                };
+              }
+              return memory;
+            });
+          });
 
-          localStorage.setItem("timelineMemories", data);
+          localStorage.setItem(
+            "timelineMemories",
+            JSON.stringify(memoriesToSave)
+          );
           return true;
         } catch (e) {
-          if (e.name === "QuotaExceededError") {
-            // Try to clear some space automatically
-            const cleared = clearOldestMemoriesIfNeeded(0);
-            if (cleared) {
-              return saveMemories(); // Retry after clearing
-            }
-            alert("Penyimpanan penuh! Hapus beberapa kenangan lama.");
-          } else {
-            console.error("Error saving memories:", e);
-          }
+          console.error("Error saving memories:", e);
           return false;
         }
       }
@@ -833,169 +875,28 @@
           const savedMemories = localStorage.getItem("timelineMemories");
 
           if (!savedMemories) {
-            // Initialize with default categories if empty
             memories = {};
             return;
           }
 
-          const parsed = JSON.parse(savedMemories);
+          memories = JSON.parse(savedMemories);
 
-          // Validate and clean the loaded data
-          memories = {};
-          Object.keys(parsed).forEach((category) => {
-            if (Array.isArray(parsed[category])) {
-              // Filter out invalid items and add missing properties
-              memories[category] = parsed[category]
-                .filter(
-                  (item) =>
-                    item &&
-                    item.id &&
-                    (item.type === "image" || item.type === "video")
-                )
-                .map((item) => ({
-                  ...item,
-                  size: item.size || 0,
-                  lastModified: item.lastModified || Date.now(),
-                }));
-            } else {
+          Object.keys(memories).forEach((category) => {
+            if (!Array.isArray(memories[category])) {
               memories[category] = [];
-            }
-          });
-
-          // Ensure default categories exist
-          const defaultCategories = [];
-          defaultCategories.forEach((cat) => {
-            if (!memories[cat]) {
-              memories[cat] = [];
             }
           });
         } catch (e) {
           console.error("Error loading memories:", e);
-          // Fallback to empty memories
           memories = {};
         }
       }
 
-      // Modified renderMemorySection to handle Base64 videos
-      function renderMemorySection(category) {
-        const grid = document.getElementById(`${category.toLowerCase()}-grid`);
-        if (!grid || !memories[category]) return;
-
-        grid.innerHTML = "";
-
-        memories[category].forEach((memory) => {
-          const item = document.createElement("div");
-          item.className = "memory-item mx-2 mb-4";
-
-          if (memory.type === "video") {
-            item.innerHTML = `
-        <div class="video-thumbnail relative">
-          <video 
-            src="${memory.src}" 
-            controls
-            class="w-full h-48 object-cover"
-          ></video>
-          <div class="text-center mt-2 text-sm text-gray-600">
-            ${memory.year} • Video
-          </div>
-        </div>
-      `;
-          } else {
-            item.innerHTML = `
-        <div class="polaroid">
-          <img 
-            src="${memory.src}" 
-            class="w-full h-48 object-cover"
-            loading="lazy"
-            alt="${memory.name}"
-          >
-          <div class="text-center mt-2 text-sm text-gray-600">
-            ${memory.year} • Foto
-          </div>
-        </div>
-      `;
-          }
-
-          grid.appendChild(item);
-        });
-      }
-
-      // Modified renderUploadedMemories
-      function renderUploadedMemories() {
-        const container = document.getElementById("uploadedMemories");
-        container.innerHTML = "";
-
-        Object.keys(memories).forEach((category) => {
-          memories[category].forEach((memory) => {
-            const item = document.createElement("div");
-            item.className = "border rounded-lg p-3 flex flex-col memory-item";
-
-            const preview = document.createElement(
-              memory.type === "image" ? "img" : "video"
-            );
-            preview.src = memory.src;
-            preview.className = "w-full h-32 object-cover rounded";
-            if (memory.type === "video") {
-              preview.controls = true;
-            }
-
-            const info = document.createElement("div");
-            info.className = "mt-2 text-sm flex-grow";
-            info.innerHTML = `
-        <p><strong>Kategori:</strong> ${getCategoryName(memory.category)}</p>
-        <p><strong>Tahun:</strong> ${memory.year}</p>
-        <p><strong>Nama:</strong> ${memory.name || "Untitled"}</p>
-        <p><strong>Ukuran:</strong> ${formatFileSize(memory.size)}</p>
-      `;
-
-            const deleteBtn = document.createElement("button");
-            deleteBtn.className =
-              "mt-2 bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded text-sm";
-            deleteBtn.textContent = "Hapus";
-            deleteBtn.onclick = () => deleteMemory(memory.id, memory.category);
-
-            item.appendChild(preview);
-            item.appendChild(info);
-            item.appendChild(deleteBtn);
-
-            container.appendChild(item);
-          });
-        });
-      }
-
-      // Helper function to calculate current storage usage
-      function calculateCurrentStorageUsage() {
-        return Object.values(memories)
-          .flat()
-          .reduce((sum, m) => sum + (m.size || 0), 0);
-      }
-
-      // Helper function to clear oldest memories if needed
-      function clearOldestMemoriesIfNeeded(newFileSize) {
-        const currentUsage = calculateCurrentStorageUsage();
-        if (currentUsage + newFileSize <= MAX_TOTAL_SIZE) return false;
-
-        // Sort all memories by date (oldest first)
-        const allMemories = Object.entries(memories).flatMap(
-          ([category, items]) =>
-            items
-              .map((item) => ({ ...item, category }))
-              .sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0))
+      // Helper function to detect mobile
+      function isMobileDevice() {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+          navigator.userAgent
         );
-
-        let clearedSize = 0;
-        const targetSize = currentUsage + newFileSize - MAX_TOTAL_SIZE;
-
-        for (const memory of allMemories) {
-          if (clearedSize >= targetSize) break;
-
-          memories[memory.category] = memories[memory.category].filter(
-            (m) => m.id !== memory.id
-          );
-          clearedSize += memory.size || 0;
-        }
-
-        return clearedSize > 0;
       }
 
       // Helper function to format file size
@@ -1007,115 +908,7 @@
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
       }
 
-      // Function to delete a memory
-      function deleteMemory(id, category) {
-        if (!confirm("Apakah Anda yakin ingin menghapus kenangan ini?")) {
-          return;
-        }
-
-        memories[category] = memories[category].filter((m) => m.id !== id);
-        if (saveMemories()) {
-          renderUploadedMemories();
-          renderMemorySection(category);
-        }
-      }
-
-      // Function to add a new category
-      function addCategory() {
-        const newCategoryInput = document.getElementById("newCategoryName");
-        const newCategoryName = newCategoryInput.value.trim();
-        const currentLang = localStorage.getItem("preferredLang") || "id";
-
-        if (!newCategoryName) {
-          alert("Masukkan nama kategori terlebih dahulu!");
-          return;
-        }
-
-        if (newCategoryName.length > 20) {
-          alert("Nama kategori terlalu panjang (maks 20 karakter)");
-          return;
-        }
-
-        const newCategoryKey = newCategoryName
-          .toUpperCase()
-          .replace(/\s+/g, "_");
-
-        if (memories[newCategoryKey]) {
-          alert("Kategori sudah ada!");
-          return;
-        }
-
-        // Add new category
-        memories[newCategoryKey] = [];
-
-        // Add translations for the new category
-        translations.en[
-          `category_desc_${newCategoryKey.toLowerCase()}`
-        ] = `Special ${newCategoryName.toLowerCase()} memories`;
-
-        translations.id[
-          `category_desc_${newCategoryKey.toLowerCase()}`
-        ] = `Kenangan spesial ${newCategoryName.toLowerCase()}`;
-
-        if (saveMemories()) {
-          renderCategories();
-          // Update translations for the new category description
-          setLanguage(currentLang);
-          // Reset input
-          newCategoryInput.value = "";
-          // Open upload section
-          openSection("UPLOAD");
-        }
-      }
-
-      // Function to delete a category
-      function deleteCategory(category) {
-        if (
-          !confirm(
-            `Hapus kategori ${getCategoryName(category)} dan semua isinya?`
-          )
-        ) {
-          return;
-        }
-
-        // Delete category
-        delete memories[category];
-        if (saveMemories()) {
-          renderCategories();
-
-          // Open first available section or upload section
-          const firstCategory = Object.keys(memories)[0];
-          if (firstCategory) {
-            openSection(firstCategory);
-          } else {
-            openSection("UPLOAD");
-          }
-        }
-      }
-
-      // Function to get category name
-      function getCategoryName(category) {
-        const defaultNames = {};
-
-        if (defaultNames[category]) {
-          return defaultNames[category];
-        }
-
-        return category
-          .toLowerCase()
-          .replace(/_/g, " ")
-          .split(" ")
-          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-          .join(" ");
-      }
-
-      // Function to check if category is default
-      function isDefaultCategory(category) {
-        const defaultCategories = [];
-        return defaultCategories.includes(category);
-      }
-
-      // Function to open a section
+      // Function to open section
       function openSection(sectionId, event = null) {
         document.querySelectorAll(".memory-section").forEach((section) => {
           section.classList.add("hidden");
@@ -1157,138 +950,19 @@
         }
       }
 
-      // Function to render all categories
-      function renderCategories() {
-        const categoryButtons = document.getElementById("categoryButtons");
-        const categorySelect = document.getElementById("memoryCategory");
-        const categoryList = document.getElementById("categoryList");
-        const memorySections = document.getElementById("memorySections");
-
-        // Clear all containers
-        categoryButtons.innerHTML = "";
-        categorySelect.innerHTML = "";
-        categoryList.innerHTML = "";
-        memorySections.innerHTML = "";
-
-        // Sort categories alphabetically
-        const sortedCategories = Object.keys(memories).sort();
-
-        // Render navigation buttons
-        sortedCategories.forEach((category) => {
-          // Navigation button
-          const button = document.createElement("button");
-          button.onclick = (e) => openSection(category, e);
-          button.className =
-            "timeline-nav-btn px-5 py-2 rounded-full bg-white shadow-sm text-sm font-medium whitespace-nowrap hover:bg-white hover:text-blue-600 transition-all border border-gray-200";
-          button.textContent = getCategoryName(category);
-          button.dataset.category = category;
-          categoryButtons.appendChild(button);
-
-          // Dropdown option
-          const option = document.createElement("option");
-          option.value = category;
-          option.textContent = getCategoryName(category);
-          categorySelect.appendChild(option);
-
-          // Category list item
-          const categoryItem = document.createElement("div");
-          categoryItem.className =
-            "flex items-center justify-between p-2 border rounded";
-
-          const categoryName = document.createElement("span");
-          categoryName.textContent = getCategoryName(category);
-
-          const deleteBtn = document.createElement("button");
-          deleteBtn.className =
-            "bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded text-xs";
-          deleteBtn.textContent = "Hapus";
-          deleteBtn.onclick = () => deleteCategory(category);
-
-          // Disable delete for default categories
-          if (isDefaultCategory(category)) {
-            deleteBtn.disabled = true;
-            deleteBtn.className += " opacity-50 cursor-not-allowed";
-          }
-
-          categoryItem.appendChild(categoryName);
-          categoryItem.appendChild(deleteBtn);
-          categoryList.appendChild(categoryItem);
-
-          // Memory section
-          const section = document.createElement("section");
-          section.id = category;
-          section.className = "memory-section hidden";
-
-          section.innerHTML = `
-      <div class="memory-card rounded-xl shadow-md overflow-hidden">
-        <div class="p-6 pb-2">
-          <h2 class="text-2xl font-semibold mb-2 font-['Playfair_Display']">${getCategoryName(
-            category
-          )}</h2>
-          <p class="text-gray-600 mb-6 timeline-marker" data-translate="category_desc_${category.toLowerCase()}">
-            ${
-              translations["id"][`category_desc_${category.toLowerCase()}`] ||
-              `Kenangan spesial ${getCategoryName(category)}`
-            }
-          </p>
-        </div>
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 p-4" id="${category.toLowerCase()}-grid"></div>
-      </div>
-    `;
-
-          memorySections.appendChild(section);
-        });
-
-        // Add Upload button to navigation
-        const uploadBtn = document.createElement("button");
-        uploadBtn.onclick = (e) => openSection("UPLOAD", e);
-        uploadBtn.className =
-          "timeline-nav-btn px-5 py-2 rounded-full bg-white shadow-sm text-sm font-medium whitespace-nowrap hover:bg-white hover:text-blue-600 transition-all border border-gray-200";
-        uploadBtn.textContent = "Upload";
-        categoryButtons.appendChild(uploadBtn);
-
-        // Render all memories
-        renderAllMemories();
-      }
-
-      // Function to render all memories
-      function renderAllMemories() {
-        // Render each category
-        Object.keys(memories).forEach((category) => {
-          renderMemorySection(category);
-        });
-        renderUploadedMemories();
-      }
-
-      // Theme functions
-      function setTheme(theme) {
-        if (theme === "dark") {
-          document.documentElement.classList.add("dark");
-          document.getElementById("sunIcon").classList.add("hidden");
-          document.getElementById("moonIcon").classList.remove("hidden");
-        } else {
-          document.documentElement.classList.remove("dark");
-          document.getElementById("sunIcon").classList.remove("hidden");
-          document.getElementById("moonIcon").classList.add("hidden");
-        }
-        localStorage.setItem("theme", theme);
-      }
-
-      function toggleTheme() {
-        const currentTheme = localStorage.getItem("theme") || "light";
-        const newTheme = currentTheme === "light" ? "dark" : "light";
-        setTheme(newTheme);
-      }
-
       // Language translations
       const translations = {
         en: {
           welcome: "Our Journey Together",
           description: "Moments that became memories, captured in time",
+          featured: "Featured Memory",
+          upload: "Add New Memory",
         },
         id: {
           welcome: "Perjalanan Kami",
           description: "Momen yang menjadi kenangan, abadi dalam waktu",
+          featured: "Memori Unggulan",
+          upload: "Tambah Kenangan Baru",
         },
       };
 
@@ -1313,7 +987,38 @@
         });
       }
 
-      // Backup and restore functions
+      // Theme functions
+      function setTheme(theme) {
+        if (theme === "dark") {
+          document.documentElement.classList.add("dark");
+          document.getElementById("sunIcon").classList.add("hidden");
+          document.getElementById("moonIcon").classList.remove("hidden");
+        } else {
+          document.documentElement.classList.remove("dark");
+          document.getElementById("sunIcon").classList.remove("hidden");
+          document.getElementById("moonIcon").classList.add("hidden");
+        }
+        localStorage.setItem("theme", theme);
+      }
+
+      function toggleTheme() {
+        const currentTheme = localStorage.getItem("theme") || "light";
+        const newTheme = currentTheme === "light" ? "dark" : "light";
+        setTheme(newTheme);
+      }
+
+      function deleteMemory(id, category) {
+        if (!confirm("Apakah Anda yakin ingin menghapus kenangan ini?")) {
+          return;
+        }
+
+        memories[category] = memories[category].filter((m) => m.id !== id);
+        if (saveMemories()) {
+          renderUploadedMemories();
+          renderMemorySection(category);
+        }
+      }
+
       function backupMemories() {
         try {
           const data = JSON.stringify(memories);
@@ -1383,6 +1088,286 @@
         reader.readAsText(file);
       }
 
+      function addCategory() {
+        const newCategoryInput = document.getElementById("newCategoryName");
+        const newCategoryName = newCategoryInput.value.trim();
+
+        if (!newCategoryName) {
+          alert("Masukkan nama kategori terlebih dahulu!");
+          return;
+        }
+
+        if (newCategoryName.length > 20) {
+          alert("Nama kategori terlalu panjang (maks 20 karakter)");
+          return;
+        }
+
+        const newCategoryKey = newCategoryName
+          .toUpperCase()
+          .replace(/\s+/g, "_");
+
+        if (memories[newCategoryKey]) {
+          alert("Kategori sudah ada!");
+          return;
+        }
+
+        // Add new category
+        memories[newCategoryKey] = [];
+
+        translations.en[
+          `category_desc_${newCategoryKey.toLowerCase()}`
+        ] = `Special ${newCategoryName.toLowerCase()} memories`;
+
+        translations.id[
+          `category_desc_${newCategoryKey.toLowerCase()}`
+        ] = `Kenangan spesial ${newCategoryName.toLowerCase()}`;
+
+        if (saveMemories()) {
+          renderCategories();
+          setLanguage(currentLang);
+          // Reset input
+          newCategoryInput.value = "";
+          // Open upload section
+          openSection("UPLOAD");
+        }
+      }
+
+      function deleteCategory(category) {
+        if (
+          !confirm(
+            `Hapus kategori ${getCategoryName(category)} dan semua isinya?`
+          )
+        ) {
+          return;
+        }
+
+        // Delete category
+        delete memories[category];
+        if (saveMemories()) {
+          renderCategories();
+
+          // Open first available section or upload section
+          const firstCategory = Object.keys(memories)[0];
+          if (firstCategory) {
+            openSection(firstCategory);
+          } else {
+            openSection("UPLOAD");
+          }
+        }
+      }
+
+      function isDefaultCategory(category) {
+        const defaultCategories = [];
+        return defaultCategories.includes(category);
+      }
+
+      function getCategoryName(category) {
+        const defaultNames = {};
+
+        if (defaultNames[category]) {
+          return defaultNames[category];
+        }
+
+        return category
+          .toLowerCase()
+          .replace(/_/g, " ")
+          .split(" ")
+          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(" ");
+      }
+
+      function renderCategories() {
+        const categoryButtons = document.getElementById("categoryButtons");
+        const categorySelect = document.getElementById("memoryCategory");
+        const categoryList = document.getElementById("categoryList");
+        const memorySections = document.getElementById("memorySections");
+
+        // Clear all containers
+        categoryButtons.innerHTML = "";
+        categorySelect.innerHTML = "";
+        categoryList.innerHTML = "";
+        memorySections.innerHTML = "";
+
+        // Sort categories alphabetically
+        const sortedCategories = Object.keys(memories).sort();
+
+        // Render navigation buttons
+        sortedCategories.forEach((category) => {
+          // Navigation button
+          const button = document.createElement("button");
+          button.onclick = (e) => openSection(category, e);
+          button.className =
+            "timeline-nav-btn px-5 py-2 rounded-full bg-white shadow-sm text-sm font-medium whitespace-nowrap hover:bg-white hover:text-blue-600 transition-all border border-gray-200";
+          button.textContent = getCategoryName(category);
+          button.dataset.category = category;
+          categoryButtons.appendChild(button);
+
+          // Dropdown option
+          const option = document.createElement("option");
+          option.value = category;
+          option.textContent = getCategoryName(category);
+          categorySelect.appendChild(option);
+
+          // Category list item
+          const categoryItem = document.createElement("div");
+          categoryItem.className =
+            "flex items-center justify-between p-2 border rounded";
+
+          const categoryName = document.createElement("span");
+          categoryName.textContent = getCategoryName(category);
+
+          const deleteBtn = document.createElement("button");
+          deleteBtn.className =
+            "bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded text-xs";
+          deleteBtn.textContent = "Hapus";
+          deleteBtn.onclick = () => deleteCategory(category);
+
+          // Disable delete for default categories
+          if (isDefaultCategory(category)) {
+            deleteBtn.disabled = true;
+            deleteBtn.className += " opacity-50 cursor-not-allowed";
+          }
+
+          categoryItem.appendChild(categoryName);
+          categoryItem.appendChild(deleteBtn);
+          categoryList.appendChild(categoryItem);
+
+          // Memory section
+          const section = document.createElement("section");
+          section.id = category;
+          section.className = "memory-section hidden";
+
+          section.innerHTML = `
+              <div class="memory-card rounded-xl shadow-md overflow-hidden">
+              <div class="p-6 pb-2">
+                  <h2 class="text-2xl font-semibold mb-2 font-['Playfair_Display']">${getCategoryName(
+                    category
+                  )}</h2>
+                  <p class="text-gray-600 mb-6 timeline-marker" data-translate="category_desc_${category.toLowerCase()}">
+                  ${
+                    translations["id"][
+                      `category_desc_${category.toLowerCase()}`
+                    ] || `Kenangan spesial ${getCategoryName(category)}`
+                  }
+                  </p>
+              </div>
+              <div class="grid grid-cols-2 md:grid-cols-3 gap-4 p-4" id="${category.toLowerCase()}-grid"></div>
+              </div>
+          `;
+
+          memorySections.appendChild(section);
+        });
+
+        // Add Upload button to navigation
+        const uploadBtn = document.createElement("button");
+        uploadBtn.onclick = (e) => openSection("UPLOAD", e);
+        uploadBtn.className =
+          "timeline-nav-btn px-5 py-2 rounded-full bg-white shadow-sm text-sm font-medium whitespace-nowrap hover:bg-white hover:text-blue-600 transition-all border border-gray-200";
+        uploadBtn.textContent = "Upload";
+        categoryButtons.appendChild(uploadBtn);
+
+        // Render all memories
+        renderAllMemories();
+      }
+
+      function renderAllMemories() {
+        // Render each category
+        Object.keys(memories).forEach((category) => {
+          renderMemorySection(category);
+        });
+        renderUploadedMemories();
+      }
+
+      function renderMemorySection(category) {
+        const grid = document.getElementById(`${category.toLowerCase()}-grid`);
+        if (!grid || !memories[category]) return;
+
+        grid.innerHTML = "";
+
+        memories[category].forEach((memory) => {
+          const item = document.createElement("div");
+          item.className = "memory-item mx-2 mb-4";
+
+          if (memory.type === "video") {
+            // Recreate the object URL if needed
+            const videoUrl =
+              memory.src ||
+              (memory.file ? URL.createObjectURL(memory.file) : "");
+
+            item.innerHTML = `
+                  <div class="video-thumbnail relative">
+                      <video
+                          src="${videoUrl}"
+                          controls
+                          class="w-full h-48 object-cover"
+                      ></video>
+                      <div class="text-center mt-2 text-sm text-gray-600">
+                          ${memory.year} • Video
+                      </div>
+                  </div>
+              `;
+          } else {
+            item.innerHTML = `
+                  <div class="polaroid">
+                      <img
+                          src="${memory.src}"
+                          class="w-full h-48 object-cover"
+                          loading="lazy"
+                          alt="${memory.name}"
+                      >
+                      <div class="text-center mt-2 text-sm text-gray-600">
+                          ${memory.year} • Foto
+                      </div>
+                  </div>
+              `;
+          }
+
+          grid.appendChild(item);
+        });
+      }
+
+      function renderUploadedMemories() {
+        const container = document.getElementById("uploadedMemories");
+        container.innerHTML = "";
+
+        Object.keys(memories).forEach((category) => {
+          memories[category].forEach((memory) => {
+            const item = document.createElement("div");
+            item.className = "border rounded-lg p-3 flex flex-col memory-item";
+
+            const preview = document.createElement(
+              memory.type === "image" ? "img" : "video"
+            );
+            preview.src = memory.src;
+            preview.className = "w-full h-32 object-cover rounded";
+            if (memory.type === "video") {
+              preview.controls = true;
+            }
+
+            const info = document.createElement("div");
+            info.className = "mt-2 text-sm flex-grow";
+            info.innerHTML = `
+          <p><strong>Kategori:</strong> ${getCategoryName(memory.category)}</p>
+          <p><strong>Tahun:</strong> ${memory.year}</p>
+          <p><strong>Nama:</strong> ${memory.name || "Untitled"}</p>
+          <p><strong>Ukuran:</strong> ${formatFileSize(memory.size)}</p>
+        `;
+
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className =
+              "mt-2 bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded text-sm";
+            deleteBtn.textContent = "Hapus";
+            deleteBtn.onclick = () => deleteMemory(memory.id, memory.category);
+
+            item.appendChild(preview);
+            item.appendChild(info);
+            item.appendChild(deleteBtn);
+
+            container.appendChild(item);
+          });
+        });
+      }
+
       // Initialize when DOM is loaded
       document.addEventListener("DOMContentLoaded", function () {
         // Initialize language
@@ -1421,10 +1406,24 @@
 
         // Render everything
         renderCategories();
-
-        // Open default section
-        openSection("CIANJUR");
       });
+
+      function cleanupObjectURLs() {
+        Object.values(memories)
+          .flat()
+          .forEach((memory) => {
+            if (
+              memory.type === "video" &&
+              memory.src &&
+              memory.src.startsWith("blob:")
+            ) {
+              URL.revokeObjectURL(memory.src);
+            }
+          });
+      }
+
+      // Call this before page unload or when you're done with the videos
+      window.addEventListener("beforeunload", cleanupObjectURLs);
     </script>
   </body>
 </html>

@@ -665,7 +665,7 @@
       const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
       const MAX_VIDEO_SIZE = 15 * 1024 * 1024;
       const MAX_TOTAL_SIZE = 500 * 1024 * 1024;
-      const MAX_ITEMS_PER_CATEGORY = 100;
+      const MAX_ITEMS_PER_CATEGORY = 500;
 
       // Improved storage management functions
       function calculateCurrentStorageUsage() {
@@ -807,31 +807,54 @@
             memories[category] = [];
           }
 
-          const memoryItem = {
-            id: Date.now() + "-" + Math.random().toString(36).substr(2, 9),
-            type: isVideo ? "video" : "image",
-            year: year,
-            category: category,
-            name: file.name,
-            size: file.size,
-            lastModified: file.lastModified || Date.now(),
-            file: isVideo ? file : null, // Store the file object for videos
-          };
+          // Check if category has too many items
+          if (memories[category].length >= MAX_ITEMS_PER_CATEGORY) {
+            // Remove oldest item in this category
+            memories[category].shift();
+          }
 
           if (isVideo) {
-            // For videos, we'll use the file object directly when needed
-            memoryItem.src = URL.createObjectURL(file);
+            // For videos, use Object URL
+            const videoUrl = URL.createObjectURL(file);
+
+            const memoryItem = {
+              id: Date.now() + "-" + Math.random().toString(36).substr(2, 9),
+              type: "video",
+              src: videoUrl,
+              year: year,
+              category: category,
+              name: file.name,
+              size: file.size,
+              lastModified: file.lastModified || Date.now(),
+              isMobile: isMobileDevice(),
+            };
+
             memories[category].push(memoryItem);
             resolve();
           } else {
-            // For images, convert to data URL
+            // For images, use FileReader
             const reader = new FileReader();
+
             reader.onload = function (e) {
-              memoryItem.src = e.target.result;
+              const memoryItem = {
+                id: Date.now() + "-" + Math.random().toString(36).substr(2, 9),
+                type: "image",
+                src: e.target.result,
+                year: year,
+                category: category,
+                name: file.name,
+                size: file.size,
+                lastModified: file.lastModified || Date.now(),
+              };
+
               memories[category].push(memoryItem);
               resolve();
             };
-            reader.onerror = reject;
+
+            reader.onerror = function () {
+              reject(new Error("Gagal membaca file"));
+            };
+
             reader.readAsDataURL(file);
           }
         });
@@ -840,31 +863,38 @@
       // Improved save function with size check
       function saveMemories() {
         try {
-          const memoriesToSave = {};
-
-          Object.keys(memories).forEach((category) => {
-            memoriesToSave[category] = memories[category].map((memory) => {
-              if (
-                memory.type === "video" &&
-                memory.src &&
-                !memory.src.startsWith("data:")
-              ) {
-                return {
-                  ...memory,
-                  src: "",
-                };
-              }
-              return memory;
-            });
+          // Stringify with replacer to handle circular references
+          const data = JSON.stringify(memories, (key, value) => {
+            // Skip the actual blob data to reduce size
+            if (
+              key === "src" &&
+              typeof value === "string" &&
+              value.startsWith("blob:")
+            ) {
+              return undefined;
+            }
+            return value;
           });
 
-          localStorage.setItem(
-            "timelineMemories",
-            JSON.stringify(memoriesToSave)
-          );
+          // Check if data is too large
+          if (new Blob([data]).size > MAX_TOTAL_SIZE) {
+            alert("Data terlalu besar! Hapus beberapa kenangan lama.");
+            return false;
+          }
+
+          localStorage.setItem("timelineMemories", data);
           return true;
         } catch (e) {
-          console.error("Error saving memories:", e);
+          if (e.name === "QuotaExceededError") {
+            // Try to clear some space automatically
+            const cleared = clearOldestMemoriesIfNeeded(0);
+            if (cleared) {
+              return saveMemories(); // Retry after clearing
+            }
+            alert("Penyimpanan penuh! Hapus beberapa kenangan lama.");
+          } else {
+            console.error("Error saving memories:", e);
+          }
           return false;
         }
       }
@@ -875,19 +905,65 @@
           const savedMemories = localStorage.getItem("timelineMemories");
 
           if (!savedMemories) {
+            // Initialize with default categories if empty
             memories = {};
             return;
           }
 
-          memories = JSON.parse(savedMemories);
+          const parsed = JSON.parse(savedMemories);
 
-          Object.keys(memories).forEach((category) => {
-            if (!Array.isArray(memories[category])) {
+          // Validate and clean the loaded data
+          memories = {};
+          Object.keys(parsed).forEach((category) => {
+            if (Array.isArray(parsed[category])) {
+              // Filter out invalid items and add missing properties
+              memories[category] = parsed[category]
+                .filter(
+                  (item) =>
+                    item &&
+                    item.id &&
+                    (item.type === "image" || item.type === "video")
+                )
+                .map((item) => ({
+                  ...item,
+                  size: item.size || 0,
+                  lastModified: item.lastModified || Date.now(),
+                }));
+            } else {
               memories[category] = [];
             }
           });
+
+          // Ensure default categories exist
+          const defaultCategories = [];
+          defaultCategories.forEach((cat) => {
+            if (!memories[cat]) {
+              memories[cat] = [];
+            }
+          });
+
+          // Clean up any Object URLs that might have been saved incorrectly
+          Object.values(memories)
+            .flat()
+            .forEach((memory) => {
+              if (
+                memory.type === "video" &&
+                memory.src &&
+                memory.src.startsWith("blob:")
+              ) {
+                // Revoke the old URL if it exists
+                try {
+                  URL.revokeObjectURL(memory.src);
+                } catch (e) {
+                  console.warn("Failed to revoke object URL:", e);
+                }
+                // Remove the invalid reference
+                memory.src = "";
+              }
+            });
         } catch (e) {
           console.error("Error loading memories:", e);
+          // Fallback to empty memories
           memories = {};
         }
       }
@@ -1238,22 +1314,22 @@
           section.className = "memory-section hidden";
 
           section.innerHTML = `
-              <div class="memory-card rounded-xl shadow-md overflow-hidden">
-              <div class="p-6 pb-2">
-                  <h2 class="text-2xl font-semibold mb-2 font-['Playfair_Display']">${getCategoryName(
-                    category
-                  )}</h2>
-                  <p class="text-gray-600 mb-6 timeline-marker" data-translate="category_desc_${category.toLowerCase()}">
-                  ${
-                    translations["id"][
-                      `category_desc_${category.toLowerCase()}`
-                    ] || `Kenangan spesial ${getCategoryName(category)}`
-                  }
-                  </p>
-              </div>
-              <div class="grid grid-cols-2 md:grid-cols-3 gap-4 p-4" id="${category.toLowerCase()}-grid"></div>
-              </div>
-          `;
+            <div class="memory-card rounded-xl shadow-md overflow-hidden">
+            <div class="p-6 pb-2">
+                <h2 class="text-2xl font-semibold mb-2 font-['Playfair_Display']">${getCategoryName(
+                  category
+                )}</h2>
+                <p class="text-gray-600 mb-6 timeline-marker" data-translate="category_desc_${category.toLowerCase()}">
+                ${
+                  translations["id"][
+                    `category_desc_${category.toLowerCase()}`
+                  ] || `Kenangan spesial ${getCategoryName(category)}`
+                }
+                </p>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4 p-4" id="${category.toLowerCase()}-grid"></div>
+            </div>
+        `;
 
           memorySections.appendChild(section);
         });
@@ -1289,37 +1365,32 @@
           item.className = "memory-item mx-2 mb-4";
 
           if (memory.type === "video") {
-            // Recreate the object URL if needed
-            const videoUrl =
-              memory.src ||
-              (memory.file ? URL.createObjectURL(memory.file) : "");
-
             item.innerHTML = `
-                  <div class="video-thumbnail relative">
-                      <video
-                          src="${videoUrl}"
-                          controls
-                          class="w-full h-48 object-cover"
-                      ></video>
-                      <div class="text-center mt-2 text-sm text-gray-600">
-                          ${memory.year} • Video
-                      </div>
-                  </div>
-              `;
+        <div class="video-thumbnail relative">
+          <video 
+            src="${memory.src}" 
+            controls
+            class="w-full h-48 object-cover"
+          ></video>
+          <div class="text-center mt-2 text-sm text-gray-600">
+            ${memory.year} • Video
+          </div>
+        </div>
+      `;
           } else {
             item.innerHTML = `
-                  <div class="polaroid">
-                      <img
-                          src="${memory.src}"
-                          class="w-full h-48 object-cover"
-                          loading="lazy"
-                          alt="${memory.name}"
-                      >
-                      <div class="text-center mt-2 text-sm text-gray-600">
-                          ${memory.year} • Foto
-                      </div>
-                  </div>
-              `;
+        <div class="polaroid">
+          <img 
+            src="${memory.src}" 
+            class="w-full h-48 object-cover"
+            loading="lazy"
+            alt="${memory.name}"
+          >
+          <div class="text-center mt-2 text-sm text-gray-600">
+            ${memory.year} • Foto
+          </div>
+        </div>
+      `;
           }
 
           grid.appendChild(item);
@@ -1347,11 +1418,11 @@
             const info = document.createElement("div");
             info.className = "mt-2 text-sm flex-grow";
             info.innerHTML = `
-          <p><strong>Kategori:</strong> ${getCategoryName(memory.category)}</p>
-          <p><strong>Tahun:</strong> ${memory.year}</p>
-          <p><strong>Nama:</strong> ${memory.name || "Untitled"}</p>
-          <p><strong>Ukuran:</strong> ${formatFileSize(memory.size)}</p>
-        `;
+        <p><strong>Kategori:</strong> ${getCategoryName(memory.category)}</p>
+        <p><strong>Tahun:</strong> ${memory.year}</p>
+        <p><strong>Nama:</strong> ${memory.name || "Untitled"}</p>
+        <p><strong>Ukuran:</strong> ${formatFileSize(memory.size)}</p>
+      `;
 
             const deleteBtn = document.createElement("button");
             deleteBtn.className =
@@ -1407,23 +1478,6 @@
         // Render everything
         renderCategories();
       });
-
-      function cleanupObjectURLs() {
-        Object.values(memories)
-          .flat()
-          .forEach((memory) => {
-            if (
-              memory.type === "video" &&
-              memory.src &&
-              memory.src.startsWith("blob:")
-            ) {
-              URL.revokeObjectURL(memory.src);
-            }
-          });
-      }
-
-      // Call this before page unload or when you're done with the videos
-      window.addEventListener("beforeunload", cleanupObjectURLs);
     </script>
   </body>
 </html>

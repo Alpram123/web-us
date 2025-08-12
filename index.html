@@ -45,7 +45,6 @@
         position: relative;
       }
       .video-thumbnail::after {
-        content: "▶";
         position: absolute;
         top: 50%;
         left: 50%;
@@ -400,7 +399,7 @@
             class="absolute -inset-2 rounded-full bg-gradient-to-r from-amber-200 to-rose-200 blur-sm opacity-75"
           ></div>
           <img
-            src="kita.jpg"
+            src="kita3.jpg"
             class="w-24 h-24 rounded-full object-cover relative z-10 border-4 border-white shadow-lg"
           />
         </div>
@@ -553,23 +552,103 @@
         </div>
       </section>
 
-      <!-- Featured Video -->
-      <div
-        class="mt-8 max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden"
-      >
-        <div class="p-4">
-          <h2
-            class="text-xl font-semibold mb-3 font-['Playfair_Display'] text-center"
-            data-translate="featured"
-          >
-            Featured Memory
-          </h2>
-          <div class="rounded-lg overflow-hidden">
-            <video
-              src="tiktokan.mp4"
-              controls
-              class="w-full h-auto max-h-64 object-contain mx-auto"
-            ></video>
+      <div class="flex flex-wrap justify-center gap-8 mt-8">
+        <!-- Featured Image -->
+        <div
+          class="flex-1 min-w-[300px] max-w-md bg-white rounded-xl shadow-md overflow-hidden"
+        >
+          <div class="p-4">
+            <h2
+              class="text-xl font-semibold mb-3 font-['Playfair_Display'] text-center"
+              data-translate="featured"
+            >
+              Featured Photo
+            </h2>
+            <div class="rounded-lg overflow-hidden">
+              <img
+                src="ondangan.jpg"
+                class="w-full h-auto max-h-64 object-contain mx-auto"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="flex-1 min-w-[300px] max-w-md bg-white rounded-xl shadow-md overflow-hidden"
+        >
+          <div class="p-4">
+            <h2
+              class="text-xl font-semibold mb-3 font-['Playfair_Display'] text-center"
+              data-translate="featured"
+            >
+              Featured Photo
+            </h2>
+            <div class="rounded-lg overflow-hidden">
+              <img
+                src="kita2.jpg"
+                class="w-full h-auto max-h-64 object-contain mx-auto"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="flex-1 min-w-[300px] max-w-md bg-white rounded-xl shadow-md overflow-hidden"
+        >
+          <div class="p-4">
+            <h2
+              class="text-xl font-semibold mb-3 font-['Playfair_Display'] text-center"
+              data-translate="featured"
+            >
+              Featured Photo
+            </h2>
+            <div class="rounded-lg overflow-hidden">
+              <img
+                src="wisuda1.jpg"
+                class="w-full h-auto max-h-64 object-contain mx-auto"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Featured Video -->
+        <div
+          class="flex-1 min-w-[300px] max-w-md bg-white rounded-xl shadow-md overflow-hidden"
+        >
+          <div class="p-4">
+            <h2
+              class="text-xl font-semibold mb-3 font-['Playfair_Display'] text-center"
+              data-translate="featured"
+            >
+              Featured Video
+            </h2>
+            <div class="rounded-lg overflow-hidden">
+              <video
+                src="tiktokan.mp4"
+                controls
+                class="w-full h-auto max-h-64 object-contain mx-auto"
+              ></video>
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="flex-1 min-w-[300px] max-w-md bg-white rounded-xl shadow-md overflow-hidden"
+        >
+          <div class="p-4">
+            <h2
+              class="text-xl font-semibold mb-3 font-['Playfair_Display'] text-center"
+              data-translate="featured"
+            >
+              Featured Video
+            </h2>
+            <div class="rounded-lg overflow-hidden">
+              <video
+                src="cipanas.mp4"
+                controls
+                class="w-full h-auto max-h-64 object-contain mx-auto"
+              ></video>
+            </div>
           </div>
         </div>
       </div>
@@ -583,29 +662,46 @@
     <script>
       // Global variables
       let memories = {};
-      const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
-      const MAX_VIDEO_SIZE = 50 * 1024 * 1024;
-      const MAX_MOBILE_VIDEO_SIZE = 15 * 1024 * 1024;
-      const MAX_TOTAL_SIZE = 999999999 * 1024 * 1024;
-      const MAX_ITEMS_PER_CATEGORY = 999;
+      const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5MB
+      const MAX_VIDEO_SIZE = 15 * 1024 * 1024; // 15MB (reduced for mobile)
+      const MAX_TOTAL_SIZE = 500 * 1024 * 1024; // 50MB (reduced for mobile)
+      const MAX_ITEMS_PER_CATEGORY = 100;
 
-      // Deteksi perangkat mobile
-      function isMobileDevice() {
-        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-          navigator.userAgent
+      // Improved storage management functions
+      function calculateCurrentStorageUsage() {
+        return Object.values(memories)
+          .flat()
+          .reduce((sum, m) => sum + (m.size || 0), 0);
+      }
+
+      function clearOldestMemoriesIfNeeded(newFileSize) {
+        const currentUsage = calculateCurrentStorageUsage();
+        if (currentUsage + newFileSize <= MAX_TOTAL_SIZE) return false;
+
+        // Sort all memories by date (oldest first)
+        const allMemories = Object.entries(memories).flatMap(
+          ([category, items]) =>
+            items
+              .map((item) => ({ ...item, category }))
+              .sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0))
         );
+
+        let clearedSize = 0;
+        const targetSize = currentUsage + newFileSize - MAX_TOTAL_SIZE;
+
+        for (const memory of allMemories) {
+          if (clearedSize >= targetSize) break;
+
+          memories[memory.category] = memories[memory.category].filter(
+            (m) => m.id !== memory.id
+          );
+          clearedSize += memory.size || 0;
+        }
+
+        return clearedSize > 0;
       }
 
-      // Format ukuran file
-      function formatFileSize(bytes) {
-        if (bytes === 0) return "0 Bytes";
-        const k = 1024;
-        const sizes = ["Bytes", "KB", "MB", "GB"];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-      }
-
-      // Fungsi upload yang diperbaiki
+      // Improved upload function
       async function uploadMemory() {
         const category = document.getElementById("memoryCategory").value;
         const year = document.getElementById("memoryYear").value;
@@ -616,19 +712,10 @@
           return;
         }
 
-        // Validasi file
+        // Validate files first
         for (let file of files) {
           const isImage = file.type.startsWith("image/");
           const isVideo = file.type.startsWith("video/");
-
-          // Log informasi file untuk debugging
-          console.log("File info:", {
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            formattedSize: formatFileSize(file.size),
-            isMobile: isMobileDevice(),
-          });
 
           if (!isImage && !isVideo) {
             alert(
@@ -646,43 +733,60 @@
             return;
           }
 
-          if (isVideo) {
-            const maxVideoSize = isMobileDevice()
-              ? MAX_MOBILE_VIDEO_SIZE
-              : MAX_VIDEO_SIZE;
-            if (file.size > maxVideoSize) {
-              alert(
-                `Ukuran video ${file.name} (${formatFileSize(
-                  file.size
-                )}) melebihi batas ${formatFileSize(
-                  maxVideoSize
-                )} untuk perangkat ${isMobileDevice() ? "mobile" : "desktop"}`
-              );
-              return;
-            }
+          if (isVideo && file.size > MAX_VIDEO_SIZE) {
+            alert(
+              `Ukuran video ${file.name} (${formatFileSize(
+                file.size
+              )}) melebihi batas ${formatFileSize(MAX_VIDEO_SIZE)}`
+            );
+            return;
           }
         }
 
-        // Validasi total ukuran
-        const totalSize = Array.from(files).reduce(
+        // Calculate total size of new files
+        const totalNewSize = Array.from(files).reduce(
           (sum, file) => sum + file.size,
           0
         );
-        if (totalSize > MAX_TOTAL_SIZE) {
+
+        // Check storage space and clear old memories if needed
+        const cleared = clearOldestMemoriesIfNeeded(totalNewSize);
+        if (cleared) {
+          console.log("Cleared old memories to make space");
+        }
+
+        const currentUsage = calculateCurrentStorageUsage();
+        if (currentUsage + totalNewSize > MAX_TOTAL_SIZE) {
           alert(
-            `Total ukuran file (${formatFileSize(
-              totalSize
-            )}) melebihi batas ${formatFileSize(MAX_TOTAL_SIZE)}`
+            `Penyimpanan penuh! Total ${formatFileSize(
+              currentUsage + totalNewSize
+            )} melebihi batas ${formatFileSize(
+              MAX_TOTAL_SIZE
+            )}. Hapus beberapa kenangan lama.`
           );
           return;
         }
 
-        // Proses upload dengan loading spinner
+        // Process upload with loading spinner
         const spinner = document.getElementById("loadingSpinner");
         spinner.style.display = "block";
 
         try {
-          await processFiles(Array.from(files), category, year);
+          // Process files sequentially to avoid memory issues
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            await processSingleFile(file, category, year);
+
+            // Save after each file to prevent data loss
+            if (!saveMemories()) {
+              throw new Error("Gagal menyimpan ke penyimpanan lokal");
+            }
+
+            // Update UI after each file
+            renderMemorySection(category);
+            renderUploadedMemories();
+          }
+
           alert(`${files.length} file berhasil diupload!`);
           document.getElementById("memoryFile").value = ""; // Reset form
         } catch (error) {
@@ -693,13 +797,24 @@
         }
       }
 
-      // Proses file dengan async/await
-      async function processFiles(files, category, year) {
-        for (const file of files) {
+      // Process single file with Promise
+      function processSingleFile(file, category, year) {
+        return new Promise((resolve, reject) => {
           const isVideo = file.type.startsWith("video/");
 
+          // Check if category exists, if not create it
+          if (!memories[category]) {
+            memories[category] = [];
+          }
+
+          // Check if category has too many items
+          if (memories[category].length >= MAX_ITEMS_PER_CATEGORY) {
+            // Remove oldest item in this category
+            memories[category].shift();
+          }
+
           if (isVideo) {
-            // Handle video dengan Object URL
+            // For videos, use Object URL
             const videoUrl = URL.createObjectURL(file);
 
             const memoryItem = {
@@ -710,177 +825,167 @@
               category: category,
               name: file.name,
               size: file.size,
-              lastModified: file.lastModified,
-              isMobile: isMobileDevice(), // Tambahkan info perangkat
+              lastModified: file.lastModified || Date.now(),
+              isMobile: isMobileDevice(),
             };
 
             memories[category].push(memoryItem);
+            resolve();
           } else {
-            // Handle gambar dengan FileReader (promise)
-            await new Promise((resolve) => {
-              const reader = new FileReader();
-              reader.onload = function (e) {
-                const memoryItem = {
-                  id:
-                    Date.now() + "-" + Math.random().toString(36).substr(2, 9),
-                  type: "image",
-                  src: e.target.result,
-                  year: year,
-                  category: category,
-                  name: file.name,
-                  size: file.size,
-                  lastModified: file.lastModified,
-                };
+            // For images, use FileReader
+            const reader = new FileReader();
 
-                memories[category].push(memoryItem);
-                resolve();
+            reader.onload = function (e) {
+              const memoryItem = {
+                id: Date.now() + "-" + Math.random().toString(36).substr(2, 9),
+                type: "image",
+                src: e.target.result,
+                year: year,
+                category: category,
+                name: file.name,
+                size: file.size,
+                lastModified: file.lastModified || Date.now(),
               };
-              reader.readAsDataURL(file);
-            });
+
+              memories[category].push(memoryItem);
+              resolve();
+            };
+
+            reader.onerror = function () {
+              reject(new Error("Gagal membaca file"));
+            };
+
+            reader.readAsDataURL(file);
+          }
+        });
+      }
+
+      // Improved save function with size check
+      function saveMemories() {
+        try {
+          // Stringify with replacer to handle circular references
+          const data = JSON.stringify(memories, (key, value) => {
+            // Skip the actual blob data to reduce size
+            if (
+              key === "src" &&
+              typeof value === "string" &&
+              value.startsWith("blob:")
+            ) {
+              return undefined;
+            }
+            return value;
+          });
+
+          // Check if data is too large
+          if (new Blob([data]).size > MAX_TOTAL_SIZE) {
+            alert("Data terlalu besar! Hapus beberapa kenangan lama.");
+            return false;
           }
 
-          // Simpan dan render setelah setiap file
-          saveMemories();
-          renderMemorySection(category);
+          localStorage.setItem("timelineMemories", data);
+          return true;
+        } catch (e) {
+          if (e.name === "QuotaExceededError") {
+            // Try to clear some space automatically
+            const cleared = clearOldestMemoriesIfNeeded(0);
+            if (cleared) {
+              return saveMemories(); // Retry after clearing
+            }
+            alert("Penyimpanan penuh! Hapus beberapa kenangan lama.");
+          } else {
+            console.error("Error saving memories:", e);
+          }
+          return false;
         }
       }
 
-      // Render section dengan penanganan error
-      function renderMemorySection(category) {
+      // Improved load function
+      function loadMemories() {
         try {
-          const grid = document.getElementById(
-            `${category.toLowerCase()}-grid`
-          );
-          if (!grid || !memories[category]) return;
+          const savedMemories = localStorage.getItem("timelineMemories");
 
-          grid.innerHTML = "";
+          if (!savedMemories) {
+            // Initialize with default categories if empty
+            memories = {};
+            return;
+          }
 
-          memories[category].forEach((memory) => {
-            try {
-              const item = document.createElement("div");
-              item.className = "memory-item mx-2 mb-4";
+          const parsed = JSON.parse(savedMemories);
 
-              if (memory.type === "video") {
-                item.innerHTML = `
-            <div class="video-container">
-              <video 
-                src="${memory.src}" 
-                controls
-                class="w-full h-48 object-cover bg-black"
-                playsinline
-              ></video>
-              <div class="video-info">
-                <span>${memory.year} • Video</span>
-                ${
-                  memory.isMobile
-                    ? '<span class="mobile-badge">Mobile</span>'
-                    : ""
-                }
-              </div>
-            </div>
-          `;
-              } else {
-                item.innerHTML = `
-            <div class="polaroid">
-              <img 
-                src="${memory.src}" 
-                class="w-full h-48 object-cover"
-                loading="lazy"
-                alt="${memory.name || "Memory image"}"
-                onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlZWVlZWUiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiBmaWxsPSIjYWFhIj5JbWFnZSBub3QgYXZhaWxhYmxlPC90ZXh0Pjwvc3ZnPg=='"
-              >
-              <div class="photo-info">${memory.year} • Foto</div>
-            </div>
-          `;
-              }
-
-              grid.appendChild(item);
-            } catch (error) {
-              console.error("Error rendering memory item:", error);
+          // Validate and clean the loaded data
+          memories = {};
+          Object.keys(parsed).forEach((category) => {
+            if (Array.isArray(parsed[category])) {
+              // Filter out invalid items and add missing properties
+              memories[category] = parsed[category]
+                .filter(
+                  (item) =>
+                    item &&
+                    item.id &&
+                    (item.type === "image" || item.type === "video")
+                )
+                .map((item) => ({
+                  ...item,
+                  size: item.size || 0,
+                  lastModified: item.lastModified || Date.now(),
+                }));
+            } else {
+              memories[category] = [];
             }
           });
-        } catch (error) {
-          console.error("Error rendering section:", error);
+
+          // Ensure default categories exist
+          const defaultCategories = [];
+          defaultCategories.forEach((cat) => {
+            if (!memories[cat]) {
+              memories[cat] = [];
+            }
+          });
+
+          // Clean up any Object URLs that might have been saved incorrectly
+          Object.values(memories)
+            .flat()
+            .forEach((memory) => {
+              if (
+                memory.type === "video" &&
+                memory.src &&
+                memory.src.startsWith("blob:")
+              ) {
+                // Revoke the old URL if it exists
+                try {
+                  URL.revokeObjectURL(memory.src);
+                } catch (e) {
+                  console.warn("Failed to revoke object URL:", e);
+                }
+                // Remove the invalid reference
+                memory.src = "";
+              }
+            });
+        } catch (e) {
+          console.error("Error loading memories:", e);
+          // Fallback to empty memories
+          memories = {};
         }
       }
 
-      // CSS tambahan yang diperlukan
-      const style = document.createElement("style");
-      style.textContent = `
-        .video-container {
-            position: relative;
-            margin-bottom: 8px;
-        }
-        
-        .video-info {
-            display: flex;
-            justify-content: space-between;
-            padding: 4px 8px;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            font-size: 12px;
-        }
-        
-        .mobile-badge {
-            background: #4CAF50;
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-size: 10px;
-        }
-        
-        .photo-info {
-            text-align: center;
-            margin-top: 8px;
-            font-size: 12px;
-            color: #666;
-        }
-        
-        video {
-            background: #000;
-        }
-        `;
-      document.head.appendChild(style);
+      // Helper function to detect mobile
+      function isMobileDevice() {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+          navigator.userAgent
+        );
+      }
 
-      document.addEventListener("DOMContentLoaded", function () {
-        // Initialize language
-        const savedLang = localStorage.getItem("preferredLang") || "id";
-        setLanguage(savedLang);
-
-        // Language event listeners
-        document
-          .getElementById("lang-en")
-          .addEventListener("click", () => setLanguage("en"));
-        document
-          .getElementById("lang-id")
-          .addEventListener("click", () => setLanguage("id"));
-
-        // Initialize theme
-        const savedTheme = localStorage.getItem("theme") || "light";
-        setTheme(savedTheme);
-
-        // Theme toggle event
-        document
-          .getElementById("themeToggle")
-          .addEventListener("click", toggleTheme);
-
-        // Load memories
-        loadMemories();
-
-        // Initialize category management
-        document
-          .getElementById("addCategoryBtn")
-          .addEventListener("click", addCategory);
-
-        // Render everything
-        renderCategories();
-
-        // Open default section
-        openSection("CIANJUR");
-      });
+      // Helper function to format file size
+      function formatFileSize(bytes) {
+        if (bytes === 0) return "0 Bytes";
+        const k = 1024;
+        const sizes = ["Bytes", "KB", "MB", "GB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+      }
 
       // Function to open section
       function openSection(sectionId, event = null) {
-        // Hide all sections
         document.querySelectorAll(".memory-section").forEach((section) => {
           section.classList.add("hidden");
         });
@@ -926,61 +1031,14 @@
         en: {
           welcome: "Our Journey Together",
           description: "Moments that became memories, captured in time",
-          wedding: "Wedding Celebration",
-          wedding_desc: "US AT HIKAM'S SIBLING WEDDING",
-          getaway: "Mountain Getaway",
-          getaway_desc: "US AT PANGALENGAN, SITU CILEUNCA",
-          camping: "Nature Adventure",
-          camping_desc: "WE WENT CAMPING IN CIWIDEY",
-          fitness: "Fitness Journey",
-          fitness_desc: "WORKING OUT TO STAY HEALTHY, WANNA BE BODYBUILDER LOL",
-          hangouts: "Casual Hangouts",
-          hangouts_desc:
-            "DURING RAMADAN AND AFTER MARHABAN, WE'VE ALWAYS BEEN COMPATIBLE RIGHT GUYS HAHAHA",
-          graduation: "Academic Milestone",
-          graduation_desc:
-            "THIS IS CACA'S GRADUATION, PRAM WILL GRADUATE IN 2026",
-          moments: "Everyday Moments",
-          moments_desc: "JUST RANDOM PHOTOS OF US BEING SILLY LOL",
           featured: "Featured Memory",
           upload: "Add New Memory",
-          category_desc_cianjur: "Special wedding memories",
-          category_desc_pangalengan: "Special mountain getaway memories",
-          category_desc_camping: "Special camping memories",
-          category_desc_olahraga: "Special fitness journey memories",
-          category_desc_nongkrong: "Special hangout memories",
-          category_desc_wisuda: "Special graduation memories",
-          category_desc_bonus: "Special everyday moments",
         },
         id: {
           welcome: "Perjalanan Kami",
           description: "Momen yang menjadi kenangan, abadi dalam waktu",
-          wedding: "Perayaan Pernikahan",
-          wedding_desc: "KITA DI ACARA NIKAHAN KAKAKNYA HIKAM",
-          getaway: "Liburan ke Gunung",
-          getaway_desc:
-            "KITA LAGI MAIN DI PANGALENGAN NAMA TEMPAT NYAA SITU CILEUNCA",
-          camping: "Petualangan Alam",
-          camping_desc: "KITA LAGI CAMPING DI CIWIDEY NAMA TEMPAT NYAA LUPA",
-          fitness: "Perjalanan Fitness",
-          fitness_desc:
-            "OLAHRAGA DULUU BIAR SEHATT, MAU JADI BINARAGAWAN HAHAHAHAH",
-          hangouts: "Nongkrong Santai",
-          hangouts_desc:
-            "INI PAS PUASA SAMA ABIS MARHABAAN GUYSS DARI DULU KITA EMANG COCOK KANN GUYSS HAHAHAHAH",
-          graduation: "Pencapaian Akademik",
-          graduation_desc: "INI CACA WISUDA, NANTI PRAM 2026 WISUDA NYAA",
-          moments: "Momen sehari-hari",
-          moments_desc: 'INI PHOTO" KITA LAGI GABUTT AJAA GUYS WKWKWKWK',
           featured: "Memori Unggulan",
           upload: "Tambah Kenangan Baru",
-          category_desc_cianjur: "Kenangan spesial nikahan",
-          category_desc_pangalengan: "Kenangan spesial main di gunung",
-          category_desc_camping: "Kenangan spesial camping",
-          category_desc_olahraga: "Kenangan spesial olahraga",
-          category_desc_nongkrong: "Kenangan spesial nongkrong",
-          category_desc_wisuda: "Kenangan spesial wisuda",
-          category_desc_bonus: "Kenangan spesial sehari-hari",
         },
       };
 
@@ -1025,346 +1083,6 @@
         setTheme(newTheme);
       }
 
-      // Memory management functions
-      function loadMemories() {
-        try {
-          const savedMemories = localStorage.getItem("timelineMemories");
-          memories = savedMemories
-            ? JSON.parse(savedMemories)
-            : {
-                CIANJUR: [],
-                PANGALENGAN: [],
-                CAMPING: [],
-                OLAHRAGA: [],
-                NONGKRONG: [],
-                WISUDA: [],
-                BONUS: [],
-              };
-
-          // Ensure all categories exist and have arrays
-          Object.keys(memories).forEach((cat) => {
-            if (!Array.isArray(memories[cat])) {
-              memories[cat] = [];
-            }
-          });
-        } catch (e) {
-          console.error("Error loading memories:", e);
-          memories = {
-            CIANJUR: [],
-            PANGALENGAN: [],
-            CAMPING: [],
-            OLAHRAGA: [],
-            NONGKRONG: [],
-            WISUDA: [],
-            BONUS: [],
-          };
-        }
-      }
-
-      function renderCategories() {
-        const categoryButtons = document.getElementById("categoryButtons");
-        const categorySelect = document.getElementById("memoryCategory");
-        const categoryList = document.getElementById("categoryList");
-        const memorySections = document.getElementById("memorySections");
-
-        // Clear all containers
-        categoryButtons.innerHTML = "";
-        categorySelect.innerHTML = "";
-        categoryList.innerHTML = "";
-        memorySections.innerHTML = "";
-
-        // Sort categories alphabetically
-        const sortedCategories = Object.keys(memories).sort();
-
-        // Render navigation buttons
-        sortedCategories.forEach((category) => {
-          // Navigation button
-          const button = document.createElement("button");
-          button.onclick = (e) => openSection(category, e);
-          button.className =
-            "timeline-nav-btn px-5 py-2 rounded-full bg-white shadow-sm text-sm font-medium whitespace-nowrap hover:bg-white hover:text-blue-600 transition-all border border-gray-200";
-          button.textContent = getCategoryName(category);
-          button.dataset.category = category;
-          categoryButtons.appendChild(button);
-
-          // Dropdown option
-          const option = document.createElement("option");
-          option.value = category;
-          option.textContent = getCategoryName(category);
-          categorySelect.appendChild(option);
-
-          // Category list item
-          const categoryItem = document.createElement("div");
-          categoryItem.className =
-            "flex items-center justify-between p-2 border rounded";
-
-          const categoryName = document.createElement("span");
-          categoryName.textContent = getCategoryName(category);
-
-          const deleteBtn = document.createElement("button");
-          deleteBtn.className =
-            "bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded text-xs";
-          deleteBtn.textContent = "Hapus";
-          deleteBtn.onclick = () => deleteCategory(category);
-
-          // Disable delete for default categories
-          if (isDefaultCategory(category)) {
-            deleteBtn.disabled = true;
-            deleteBtn.className += " opacity-50 cursor-not-allowed";
-          }
-
-          categoryItem.appendChild(categoryName);
-          categoryItem.appendChild(deleteBtn);
-          categoryList.appendChild(categoryItem);
-
-          // Memory section
-          const section = document.createElement("section");
-          section.id = category;
-          section.className = "memory-section hidden";
-
-          section.innerHTML = `
-            <div class="memory-card rounded-xl shadow-md overflow-hidden">
-              <div class="p-6 pb-2">
-                <h2 class="text-2xl font-semibold mb-2 font-['Playfair_Display']">${getCategoryName(
-                  category
-                )}</h2>
-                <p class="text-gray-600 mb-6 timeline-marker" data-translate="category_desc_${category.toLowerCase()}">Kenangan spesial ${getCategoryName(
-            category
-          )}</p>
-              </div>
-              <div class="grid grid-cols-2 md:grid-cols-3 gap-4 p-4" id="${category.toLowerCase()}-grid"></div>
-            </div>
-          `;
-
-          memorySections.appendChild(section);
-        });
-
-        // Add Upload button to navigation
-        const uploadBtn = document.createElement("button");
-        uploadBtn.onclick = (e) => openSection("UPLOAD", e);
-        uploadBtn.className =
-          "timeline-nav-btn px-5 py-2 rounded-full bg-white shadow-sm text-sm font-medium whitespace-nowrap hover:bg-white hover:text-blue-600 transition-all border border-gray-200";
-        uploadBtn.textContent = "Upload";
-        categoryButtons.appendChild(uploadBtn);
-
-        // Render all memories
-        renderAllMemories();
-      }
-
-      function renderAllMemories() {
-        // Render each category
-        Object.keys(memories).forEach((category) => {
-          renderMemorySection(category);
-        });
-        renderUploadedMemories();
-      }
-
-      function renderMemorySection(category) {
-        const grid = document.getElementById(`${category.toLowerCase()}-grid`);
-        if (!grid || !memories[category]) return;
-
-        grid.innerHTML = "";
-
-        memories[category].forEach((memory) => {
-          const item = document.createElement("div");
-          item.className = "memory-item mx-2 mb-4";
-
-          if (memory.type === "video") {
-            item.innerHTML = `
-        <div class="video-thumbnail relative">
-          <video 
-            src="${memory.src}" 
-            controls
-            class="w-full h-48 object-cover"
-          ></video>
-          <div class="text-center mt-2 text-sm text-gray-600">
-            ${memory.year} • Video
-          </div>
-        </div>
-      `;
-          } else {
-            item.innerHTML = `
-        <div class="polaroid">
-          <img 
-            src="${memory.src}" 
-            class="w-full h-48 object-cover"
-            loading="lazy"
-            alt="${memory.name}"
-          >
-          <div class="text-center mt-2 text-sm text-gray-600">
-            ${memory.year} • Foto
-          </div>
-        </div>
-      `;
-          }
-
-          grid.appendChild(item);
-        });
-      }
-
-      function renderUploadedMemories() {
-        const container = document.getElementById("uploadedMemories");
-        container.innerHTML = "";
-
-        Object.keys(memories).forEach((category) => {
-          memories[category].forEach((memory) => {
-            const item = document.createElement("div");
-            item.className = "border rounded-lg p-3 flex flex-col memory-item";
-
-            const preview = document.createElement(
-              memory.type === "image" ? "img" : "video"
-            );
-            preview.src = memory.src;
-            preview.className = "w-full h-32 object-cover rounded";
-            if (memory.type === "video") {
-              preview.controls = true;
-            }
-
-            const info = document.createElement("div");
-            info.className = "mt-2 text-sm flex-grow";
-            info.innerHTML = `
-              <p><strong>Kategori:</strong> ${getCategoryName(
-                memory.category
-              )}</p>
-              <p><strong>Tahun:</strong> ${memory.year}</p>
-              <p><strong>Nama:</strong> ${memory.name || "Untitled"}</p>
-              <p><strong>Ukuran:</strong> ${formatFileSize(memory.size)}</p>
-            `;
-
-            const deleteBtn = document.createElement("button");
-            deleteBtn.className =
-              "mt-2 bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded text-sm";
-            deleteBtn.textContent = "Hapus";
-            deleteBtn.onclick = () => deleteMemory(memory.id, memory.category);
-
-            item.appendChild(preview);
-            item.appendChild(info);
-            item.appendChild(deleteBtn);
-
-            container.appendChild(item);
-          });
-        });
-      }
-
-      function uploadMemory() {
-        const category = document.getElementById("memoryCategory").value;
-        const year = document.getElementById("memoryYear").value;
-        const files = document.getElementById("memoryFile").files;
-
-        if (files.length === 0) {
-          alert("Pilih file terlebih dahulu!");
-          return;
-        }
-
-        // Validasi file
-        for (let file of files) {
-          const isImage = file.type.startsWith("image/");
-          const isVideo = file.type.startsWith("video/");
-
-          if (!isImage && !isVideo) {
-            alert(
-              `File ${file.name} harus berupa gambar (JPEG, PNG) atau video (MP4, MOV)`
-            );
-            return;
-          }
-
-          if (isImage && file.size > MAX_PHOTO_SIZE) {
-            alert(
-              `Ukuran foto ${file.name} melebihi batas ${
-                MAX_PHOTO_SIZE / 1024 / 1024
-              }MB`
-            );
-            return;
-          }
-
-          if (isVideo && file.size > MAX_VIDEO_SIZE) {
-            alert(
-              `Ukuran video ${file.name} melebihi batas ${
-                MAX_VIDEO_SIZE / 1024 / 1024
-              }MB`
-            );
-            return;
-          }
-        }
-
-        // Proses upload
-        const spinner = document.getElementById("loadingSpinner");
-        spinner.style.display = "block";
-
-        processFiles(Array.from(files), 0, category, year, () => {
-          spinner.style.display = "none";
-          document.getElementById("memoryFile").value = "";
-          alert("Upload berhasil!");
-        });
-      }
-
-      function processFiles(files, index, category, year, callback) {
-        if (index >= files.length) {
-          callback();
-          return;
-        }
-
-        const file = files[index];
-        const isVideo = file.type.startsWith("video/");
-
-        if (isVideo) {
-          const videoUrl = URL.createObjectURL(file);
-
-          const memoryItem = {
-            id: Date.now() + "-" + Math.random().toString(36).substr(2, 9),
-            type: "video",
-            src: videoUrl,
-            year: year,
-            category: category,
-            name: file.name,
-            size: file.size,
-            lastModified: file.lastModified,
-          };
-
-          memories[category].push(memoryItem);
-        } else {
-          // Handle gambar
-          const reader = new FileReader();
-          reader.onload = function (e) {
-            const memoryItem = {
-              id: Date.now() + "-" + Math.random().toString(36).substr(2, 9),
-              type: "image",
-              src: e.target.result,
-              year: year,
-              category: category,
-              name: file.name,
-              size: file.size,
-              lastModified: file.lastModified,
-            };
-
-            memories[category].push(memoryItem);
-            saveMemories();
-            renderMemorySection(category);
-            processFiles(files, index + 1, category, year, callback);
-          };
-          reader.readAsDataURL(file);
-          return;
-        }
-
-        saveMemories();
-        renderMemorySection(category);
-        processFiles(files, index + 1, category, year, callback);
-      }
-
-      function saveMemories() {
-        try {
-          localStorage.setItem("timelineMemories", JSON.stringify(memories));
-          return true;
-        } catch (e) {
-          if (e.name === "QuotaExceededError") {
-            alert("Penyimpanan penuh! Hapus beberapa kenangan lama.");
-            return false;
-          }
-          console.error("Error saving memories:", e);
-          return false;
-        }
-      }
-
       function deleteMemory(id, category) {
         if (!confirm("Apakah Anda yakin ingin menghapus kenangan ini?")) {
           return;
@@ -1375,31 +1093,6 @@
           renderUploadedMemories();
           renderMemorySection(category);
         }
-      }
-
-      function checkStorageSpace(files) {
-        // Calculate current size from memory items
-        const currentSize = Object.values(memories)
-          .flat()
-          .reduce((sum, m) => sum + m.size, 0);
-
-        // Calculate new files size
-        const newFilesSize = Array.from(files).reduce(
-          (sum, file) => sum + file.size,
-          0
-        );
-
-        if (currentSize + newFilesSize > MAX_TOTAL_SIZE) {
-          alert(
-            `Penyimpanan hampir penuh! Total ${formatFileSize(
-              currentSize + newFilesSize
-            )} melebihi batas ${formatFileSize(
-              MAX_TOTAL_SIZE
-            )}. Hapus beberapa kenangan lama atau kurangi ukuran file.`
-          );
-          return false;
-        }
-        return true;
       }
 
       function backupMemories() {
@@ -1496,8 +1189,18 @@
 
         // Add new category
         memories[newCategoryKey] = [];
+
+        translations.en[
+          `category_desc_${newCategoryKey.toLowerCase()}`
+        ] = `Special ${newCategoryName.toLowerCase()} memories`;
+
+        translations.id[
+          `category_desc_${newCategoryKey.toLowerCase()}`
+        ] = `Kenangan spesial ${newCategoryName.toLowerCase()}`;
+
         if (saveMemories()) {
           renderCategories();
+          setLanguage(currentLang);
           // Reset input
           newCategoryInput.value = "";
           // Open upload section
@@ -1506,11 +1209,6 @@
       }
 
       function deleteCategory(category) {
-        if (isDefaultCategory(category)) {
-          alert("Kategori default tidak dapat dihapus!");
-          return;
-        }
-
         if (
           !confirm(
             `Hapus kategori ${getCategoryName(category)} dan semua isinya?`
@@ -1534,30 +1232,13 @@
         }
       }
 
-      // Helper functions
       function isDefaultCategory(category) {
-        const defaultCategories = [
-          "CIANJUR",
-          "PANGALENGAN",
-          "CAMPING",
-          "OLAHRAGA",
-          "NONGKRONG",
-          "WISUDA",
-          "BONUS",
-        ];
+        const defaultCategories = [];
         return defaultCategories.includes(category);
       }
 
       function getCategoryName(category) {
-        const defaultNames = {
-          CIANJUR: "Nikahan",
-          PANGALENGAN: "Main",
-          CAMPING: "Camping",
-          OLAHRAGA: "Olahraga",
-          NONGKRONG: "Nongkrong",
-          WISUDA: "Wisuda",
-          BONUS: "Moments",
-        };
+        const defaultNames = {};
 
         if (defaultNames[category]) {
           return defaultNames[category];
@@ -1571,13 +1252,232 @@
           .join(" ");
       }
 
-      function formatFileSize(bytes) {
-        if (bytes === 0) return "0 Bytes";
-        const k = 1024;
-        const sizes = ["Bytes", "KB", "MB", "GB"];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+      function renderCategories() {
+        const categoryButtons = document.getElementById("categoryButtons");
+        const categorySelect = document.getElementById("memoryCategory");
+        const categoryList = document.getElementById("categoryList");
+        const memorySections = document.getElementById("memorySections");
+
+        // Clear all containers
+        categoryButtons.innerHTML = "";
+        categorySelect.innerHTML = "";
+        categoryList.innerHTML = "";
+        memorySections.innerHTML = "";
+
+        // Sort categories alphabetically
+        const sortedCategories = Object.keys(memories).sort();
+
+        // Render navigation buttons
+        sortedCategories.forEach((category) => {
+          // Navigation button
+          const button = document.createElement("button");
+          button.onclick = (e) => openSection(category, e);
+          button.className =
+            "timeline-nav-btn px-5 py-2 rounded-full bg-white shadow-sm text-sm font-medium whitespace-nowrap hover:bg-white hover:text-blue-600 transition-all border border-gray-200";
+          button.textContent = getCategoryName(category);
+          button.dataset.category = category;
+          categoryButtons.appendChild(button);
+
+          // Dropdown option
+          const option = document.createElement("option");
+          option.value = category;
+          option.textContent = getCategoryName(category);
+          categorySelect.appendChild(option);
+
+          // Category list item
+          const categoryItem = document.createElement("div");
+          categoryItem.className =
+            "flex items-center justify-between p-2 border rounded";
+
+          const categoryName = document.createElement("span");
+          categoryName.textContent = getCategoryName(category);
+
+          const deleteBtn = document.createElement("button");
+          deleteBtn.className =
+            "bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded text-xs";
+          deleteBtn.textContent = "Hapus";
+          deleteBtn.onclick = () => deleteCategory(category);
+
+          // Disable delete for default categories
+          if (isDefaultCategory(category)) {
+            deleteBtn.disabled = true;
+            deleteBtn.className += " opacity-50 cursor-not-allowed";
+          }
+
+          categoryItem.appendChild(categoryName);
+          categoryItem.appendChild(deleteBtn);
+          categoryList.appendChild(categoryItem);
+
+          // Memory section
+          const section = document.createElement("section");
+          section.id = category;
+          section.className = "memory-section hidden";
+
+          section.innerHTML = `
+            <div class="memory-card rounded-xl shadow-md overflow-hidden">
+            <div class="p-6 pb-2">
+                <h2 class="text-2xl font-semibold mb-2 font-['Playfair_Display']">${getCategoryName(
+                  category
+                )}</h2>
+                <p class="text-gray-600 mb-6 timeline-marker" data-translate="category_desc_${category.toLowerCase()}">
+                ${
+                  translations["id"][
+                    `category_desc_${category.toLowerCase()}`
+                  ] || `Kenangan spesial ${getCategoryName(category)}`
+                }
+                </p>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4 p-4" id="${category.toLowerCase()}-grid"></div>
+            </div>
+        `;
+
+          memorySections.appendChild(section);
+        });
+
+        // Add Upload button to navigation
+        const uploadBtn = document.createElement("button");
+        uploadBtn.onclick = (e) => openSection("UPLOAD", e);
+        uploadBtn.className =
+          "timeline-nav-btn px-5 py-2 rounded-full bg-white shadow-sm text-sm font-medium whitespace-nowrap hover:bg-white hover:text-blue-600 transition-all border border-gray-200";
+        uploadBtn.textContent = "Upload";
+        categoryButtons.appendChild(uploadBtn);
+
+        // Render all memories
+        renderAllMemories();
       }
+
+      function renderAllMemories() {
+        // Render each category
+        Object.keys(memories).forEach((category) => {
+          renderMemorySection(category);
+        });
+        renderUploadedMemories();
+      }
+
+      function renderMemorySection(category) {
+        const grid = document.getElementById(`${category.toLowerCase()}-grid`);
+        if (!grid || !memories[category]) return;
+
+        grid.innerHTML = "";
+
+        memories[category].forEach((memory) => {
+          const item = document.createElement("div");
+          item.className = "memory-item mx-2 mb-4";
+
+          if (memory.type === "video") {
+            item.innerHTML = `
+        <div class="video-thumbnail relative">
+          <video 
+            src="${memory.src}" 
+            controls
+            class="w-full h-48 object-cover"
+          ></video>
+          <div class="text-center mt-2 text-sm text-gray-600">
+            ${memory.year} • Video
+          </div>
+        </div>
+      `;
+          } else {
+            item.innerHTML = `
+        <div class="polaroid">
+          <img 
+            src="${memory.src}" 
+            class="w-full h-48 object-cover"
+            loading="lazy"
+            alt="${memory.name}"
+          >
+          <div class="text-center mt-2 text-sm text-gray-600">
+            ${memory.year} • Foto
+          </div>
+        </div>
+      `;
+          }
+
+          grid.appendChild(item);
+        });
+      }
+
+      function renderUploadedMemories() {
+        const container = document.getElementById("uploadedMemories");
+        container.innerHTML = "";
+
+        Object.keys(memories).forEach((category) => {
+          memories[category].forEach((memory) => {
+            const item = document.createElement("div");
+            item.className = "border rounded-lg p-3 flex flex-col memory-item";
+
+            const preview = document.createElement(
+              memory.type === "image" ? "img" : "video"
+            );
+            preview.src = memory.src;
+            preview.className = "w-full h-32 object-cover rounded";
+            if (memory.type === "video") {
+              preview.controls = true;
+            }
+
+            const info = document.createElement("div");
+            info.className = "mt-2 text-sm flex-grow";
+            info.innerHTML = `
+        <p><strong>Kategori:</strong> ${getCategoryName(memory.category)}</p>
+        <p><strong>Tahun:</strong> ${memory.year}</p>
+        <p><strong>Nama:</strong> ${memory.name || "Untitled"}</p>
+        <p><strong>Ukuran:</strong> ${formatFileSize(memory.size)}</p>
+      `;
+
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className =
+              "mt-2 bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded text-sm";
+            deleteBtn.textContent = "Hapus";
+            deleteBtn.onclick = () => deleteMemory(memory.id, memory.category);
+
+            item.appendChild(preview);
+            item.appendChild(info);
+            item.appendChild(deleteBtn);
+
+            container.appendChild(item);
+          });
+        });
+      }
+
+      // Initialize when DOM is loaded
+      document.addEventListener("DOMContentLoaded", function () {
+        // Initialize language
+        const savedLang = localStorage.getItem("preferredLang") || "id";
+        setLanguage(savedLang);
+
+        // Language event listeners
+        document
+          .getElementById("lang-en")
+          .addEventListener("click", () => setLanguage("en"));
+        document
+          .getElementById("lang-id")
+          .addEventListener("click", () => setLanguage("id"));
+
+        // Initialize theme
+        const savedTheme = localStorage.getItem("theme") || "light";
+        setTheme(savedTheme);
+
+        // Theme toggle event
+        document
+          .getElementById("themeToggle")
+          .addEventListener("click", toggleTheme);
+
+        // Load memories with error handling
+        try {
+          loadMemories();
+        } catch (e) {
+          console.error("Failed to load memories:", e);
+          memories = {};
+        }
+
+        // Initialize category management
+        document
+          .getElementById("addCategoryBtn")
+          .addEventListener("click", addCategory);
+
+        // Render everything
+        renderCategories();
+      });
     </script>
   </body>
 </html>
